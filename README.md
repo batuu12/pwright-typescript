@@ -84,6 +84,9 @@ Tests run on **Chromium** and **Firefox** by default. **WebKit** is conditionall
 
 ## Custom HTML Reporter
 
+![Test Report](docs/report-screenshot.png)
+
+
 Each test run generates a self-contained HTML report in `custom-report/` with a timestamp in the filename (e.g. `index-2026-03-15_14-30-00.html`). Reports are never overwritten.
 
 ### Report Features
