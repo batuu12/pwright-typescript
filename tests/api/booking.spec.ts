@@ -79,4 +79,21 @@ test.describe('Restful Booker API', () => {
     const status = await client.getBookingStatus(bookingid);
     expect(status).toBe(404);
   });
+
+  test('GET /booking/:id - wrong id returns 404 - intentional fail', async () => {
+    const booking = await client.getBooking(999999999);
+    expect(booking.firstname).toBe('Wrong Name');
+  });
+
+  test.skip('POST /booking - skipped: depositpaid false not yet supported', async () => {
+    const payload = createBookingPayload({ depositpaid: false });
+    const { booking } = await client.createBooking(payload);
+    expect(booking.depositpaid).toBe(false);
+  });
+
+  test.skip('DELETE /booking/:id - skipped: bulk delete not implemented', async () => {
+    const token = await client.getToken();
+    await client.deleteBooking(1, token);
+    await client.deleteBooking(2, token);
+  });
 });

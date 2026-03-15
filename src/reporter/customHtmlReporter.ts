@@ -261,31 +261,48 @@ class CustomHtmlReporter implements Reporter {
       const sSlowest = [...sectionRecords].filter(r => r.status !== 'skipped').sort((a, b) => b.duration - a.duration).slice(0, 5);
       const sFlaky   = sectionRecords.filter(r => r.retry > 0 && r.status === 'passed');
 
+      const httpMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+      const methodColors: Record<string, string> = {
+        GET: '#3b82f6', POST: '#22c55e', PUT: '#f59e0b',
+        PATCH: '#a855f7', DELETE: '#ef4444', HEAD: '#64748b', OPTIONS: '#64748b',
+      };
+      const methodCounts = httpMethods.reduce((acc, m) => {
+        const count = sectionRecords.filter(r => new RegExp(`^${m}\\s`, 'i').test(r.title)).length;
+        if (count > 0) acc[m] = count;
+        return acc;
+      }, {} as Record<string, number>);
+      const hasMethodBreakdown = sectionId === 'api' && Object.keys(methodCounts).length > 0;
+
+      const cardBreakdown = (filter: (r: TestRecord) => boolean) => {
+        if (hasMethodBreakdown) {
+          return Object.entries(methodCounts).map(([m, total]) => {
+            const n = sectionRecords.filter(r => filter(r) && new RegExp(`^${m}\\s`, 'i').test(r.title)).length;
+            return `<span class="card-b-item" style="color:${methodColors[m]}"><strong>${m}:</strong> ${n}</span>`;
+          }).join('');
+        }
+        return sectionBrowsers.map(b => {
+          const n = sectionRecords.filter(r => r.browser === b && filter(r)).length;
+          return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`;
+        }).join('');
+      };
+
       const summaryCards = `
       <div class="summary">
         <div class="card total">
           <div class="card-left"><div class="count">${sTotal}</div><div class="label">Total</div></div>
-          <div class="card-browser-breakdown">
-            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b).length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-          </div>
+          <div class="card-browser-breakdown">${cardBreakdown(() => true)}</div>
         </div>
         <div class="card passed">
           <div class="card-left"><div class="count">${sPassed}</div><div class="label">Passed</div></div>
-          <div class="card-browser-breakdown">
-            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b && r.status === 'passed').length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-          </div>
+          <div class="card-browser-breakdown">${cardBreakdown(r => r.status === 'passed')}</div>
         </div>
         <div class="card failed">
           <div class="card-left"><div class="count">${sFailed}</div><div class="label">Failed</div></div>
-          <div class="card-browser-breakdown">
-            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b && (r.status === 'failed' || r.status === 'timedOut')).length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-          </div>
+          <div class="card-browser-breakdown">${cardBreakdown(r => r.status === 'failed' || r.status === 'timedOut')}</div>
         </div>
         <div class="card skipped">
           <div class="card-left"><div class="count">${sSkipped}</div><div class="label">Skipped</div></div>
-          <div class="card-browser-breakdown">
-            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b && r.status === 'skipped').length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-          </div>
+          <div class="card-browser-breakdown">${cardBreakdown(r => r.status === 'skipped')}</div>
         </div>
       </div>`;
 
@@ -411,10 +428,23 @@ class CustomHtmlReporter implements Reporter {
         ? `<div class="tabs">${tabButtons}</div>${panels}`
         : panels;
 
+      const methodBreakdown = hasMethodBreakdown ? `
+      <div class="method-breakdown">
+        <div class="method-breakdown-title">Request Types</div>
+        <div class="method-badges">
+          ${Object.entries(methodCounts).map(([m, count]) => `
+          <div class="method-badge">
+            <span class="method-pill" style="background:${methodColors[m]}20;color:${methodColors[m]};border-color:${methodColors[m]}40">${m}</span>
+            <span class="method-count">${count} test${count > 1 ? 's' : ''}</span>
+          </div>`).join('')}
+        </div>
+      </div>` : '';
+
       return `
 <div class="type-panel ${isActive ? 'active' : ''}" id="type-panel-${sectionId}">
   ${summaryCards}
   ${progressBar}
+  ${methodBreakdown}
   ${infoRow}
   ${browserSummary}
   ${testSection}
@@ -481,6 +511,14 @@ class CustomHtmlReporter implements Reporter {
     .prog-label-passed  { color: #15803d; }
     .prog-label-failed  { color: #b91c1c; }
     .prog-label-skipped { color: #b45309; }
+
+    /* Method breakdown */
+    .method-breakdown { margin: 0 40px 24px; background: var(--surface); border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.07); padding: 16px 24px; }
+    .method-breakdown-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text3); margin-bottom: 12px; }
+    .method-badges { display: flex; gap: 12px; flex-wrap: wrap; }
+    .method-badge { display: flex; align-items: center; gap: 8px; }
+    .method-pill { font-size: 12px; font-weight: 800; padding: 4px 12px; border-radius: 6px; border: 1px solid; letter-spacing: .05em; }
+    .method-count { font-size: 13px; font-weight: 600; color: var(--text2); }
 
     /* Info panels row */
     .info-row { display: flex; gap: 20px; margin: 0 40px 24px; flex-wrap: wrap; }

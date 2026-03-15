@@ -114,7 +114,8 @@ Each test run generates a self-contained HTML report in `custom-report/` with a 
 ### Report Features
 
 - Separate UI and API tabs with independent stats
-- Summary cards with per-browser/project pass/fail/skip counts
+- **API summary cards broken down by HTTP method** (GET, POST, PUT, PATCH, DELETE)
+- **Request Types bar** showing method counts (e.g. GET: 3, POST: 3, PUT: 1...)
 - Progress bar with percentage labels
 - Environment info (base URL, Node.js version, platform, projects)
 - Slowest tests (top 5) with relative time bars
