@@ -101,31 +101,19 @@ class CustomHtmlReporter implements Reporter {
     const dir = path.dirname(this.outputFile);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const total        = this.records.length;
-    const totalPassed  = this.records.filter(r => r.status === 'passed').length;
-    const totalFailed  = this.records.filter(r => r.status === 'failed' || r.status === 'timedOut').length;
-    const totalSkipped = this.records.filter(r => r.status === 'skipped').length;
-    const duration     = ((Date.now() - this.startTime.getTime()) / 1000).toFixed(1);
+    const duration = ((Date.now() - this.startTime.getTime()) / 1000).toFixed(1);
+    const total    = this.records.length;
 
-    const passedPct  = total ? Math.round((totalPassed  / total) * 100) : 0;
-    const failedPct  = total ? Math.round((totalFailed  / total) * 100) : 0;
-    const skippedPct = total ? 100 - passedPct - failedPct : 0;
-
-    const browsers = [...new Set(this.records.map(r => r.browser))].sort();
+    const browsers   = [...new Set(this.records.map(r => r.browser))].sort();
+    const uiBrowsers = browsers.filter(b => b !== 'api');
+    const apiRecords = this.records.filter(r => r.browser === 'api');
+    const uiRecords  = this.records.filter(r => r.browser !== 'api');
 
     const browserIcons: Record<string, string> = {
       chromium: '🟡',
       firefox:  '🦊',
       webkit:   '🔵',
     };
-
-    // Slowest tests (top 5)
-    const slowest = [...this.records]
-      .filter(r => r.status !== 'skipped')
-      .sort((a, b) => b.duration - a.duration)
-      .slice(0, 5);
-
-    const flaky = this.records.filter(r => r.retry > 0 && r.status === 'passed');
 
     let cardIndex = 0;
     const renderTestCard = (r: TestRecord) => {
@@ -208,88 +196,8 @@ class CustomHtmlReporter implements Reporter {
       </div>`;
     };
 
-    const browserSummaryRows = browsers.map(browser => {
-      const bRecords  = this.records.filter(r => r.browser === browser);
-      const bPassed   = bRecords.filter(r => r.status === 'passed').length;
-      const bFailed   = bRecords.filter(r => r.status === 'failed' || r.status === 'timedOut').length;
-      const bSkipped  = bRecords.filter(r => r.status === 'skipped').length;
-      const bTotal    = bRecords.length;
-      const bDuration = bRecords.reduce((sum, r) => sum + r.duration, 0);
-      const bDurStr   = bDuration >= 60000
-        ? `${Math.floor(bDuration / 60000)}m ${((bDuration % 60000) / 1000).toFixed(1)}s`
-        : `${(bDuration / 1000).toFixed(2)}s`;
-      const icon        = browserIcons[browser] ?? '🌐';
-      const bPassedPct  = bTotal ? Math.round((bPassed  / bTotal) * 100) : 0;
-      const bFailedPct  = bTotal ? Math.round((bFailed  / bTotal) * 100) : 0;
-      const bSkippedPct = bTotal ? 100 - bPassedPct - bFailedPct : 0;
-      const bSummaryId  = `bsummary-${browser}`;
-
-      const suites = [...new Set(bRecords.map(r => r.suite))].sort();
-      const suiteRows = suites.map(suite => {
-        const sRecs   = bRecords.filter(r => r.suite === suite);
-        const sPassed = sRecs.filter(r => r.status === 'passed').length;
-        const sFailed = sRecs.filter(r => r.status === 'failed' || r.status === 'timedOut').length;
-        const sSkipped= sRecs.filter(r => r.status === 'skipped').length;
-        const sDurStr = `${(sRecs.reduce((s, r) => s + r.duration, 0) / 1000).toFixed(2)}s`;
-        return `
-        <div class="bs-suite-row">
-          <span class="bs-suite-name">📄 ${escapeHtml(suite)}</span>
-          <span class="bs-stat bs-passed">✓ ${sPassed}</span>
-          <span class="bs-stat bs-failed">✗ ${sFailed}</span>
-          ${sSkipped ? `<span class="bs-stat bs-skipped">— ${sSkipped}</span>` : ''}
-          <span class="bs-stat bs-duration">⏱ ${sDurStr}</span>
-        </div>`;
-      }).join('');
-
-      return `
-      <div class="browser-summary-row-wrap">
-        <button class="browser-summary-row" onclick="toggleBs('${bSummaryId}', this)">
-          <span class="bs-browser">${icon} ${escapeHtml(browser)}</span>
-          <span class="bs-stat bs-total">${bTotal} total</span>
-          <span class="bs-stat bs-passed">✓ ${bPassed} passed</span>
-          <span class="bs-stat bs-failed">✗ ${bFailed} failed</span>
-          ${bSkipped ? `<span class="bs-stat bs-skipped">— ${bSkipped} skipped</span>` : ''}
-          <span class="bs-stat bs-duration">⏱ ${bDurStr}</span>
-          <div class="bs-bar-wrap">
-            <div class="bs-bar-seg" style="width:${bPassedPct}%;background:#22c55e"></div>
-            <div class="bs-bar-seg" style="width:${bFailedPct}%;background:#ef4444"></div>
-            <div class="bs-bar-seg" style="width:${bSkippedPct}%;background:#f59e0b"></div>
-          </div>
-          <span class="bs-pct bs-pct-passed">${bPassedPct}% passed</span>
-          ${bFailedPct  ? `<span class="bs-pct bs-pct-failed">${bFailedPct}% failed</span>`    : ''}
-          ${bSkippedPct ? `<span class="bs-pct bs-pct-skipped">${bSkippedPct}% skipped</span>` : ''}
-          <span class="bs-chevron">▾</span>
-        </button>
-        <div class="bs-suite-list" id="${bSummaryId}" style="display:none">${suiteRows}</div>
-      </div>`;
-    }).join('');
-
-    const tabButtons = browsers.map((b, i) =>
-      `<button class="tab ${i === 0 ? 'active' : ''}" onclick="switchTab('${b}', this)">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}</button>`
-    ).join('');
-
-    const slowestHtml = slowest.map(r =>
-      `<div class="slow-row">
-        <span class="slow-title">${escapeHtml(r.title)}</span>
-        <div class="slow-meta">
-          <span class="slow-browser">${browserIcons[r.browser] ?? '🌐'} ${escapeHtml(r.browser)}</span>
-          <span class="slow-dur">${(r.duration / 1000).toFixed(2)}s</span>
-          <div class="slow-bar-wrap"><div class="slow-bar" style="width:${Math.round((r.duration / slowest[0].duration) * 100)}%"></div></div>
-        </div>
-      </div>`
-    ).join('');
-
-    const flakyHtml = flaky.length
-      ? flaky.map(r =>
-          `<div class="flaky-row">
-            <span class="flaky-title">${escapeHtml(r.title)}</span>
-            <span class="slow-browser">${browserIcons[r.browser] ?? '🌐'} ${escapeHtml(r.browser)}</span>
-            <span class="retry-badge">↺ passed on retry ${r.retry}</span>
-          </div>`).join('')
-      : '<p class="no-data">No flaky tests detected.</p>';
-
-    const browserPanels = browsers.map((browser, i) => {
-      const bRecords = this.records.filter(r => r.browser === browser);
+    const buildPanel = (browser: string, i: number, allRecords: TestRecord[]) => {
+      const bRecords = allRecords.filter(r => r.browser === browser);
       const suites   = [...new Set(bRecords.map(r => r.suite))].sort();
 
       const suiteSections = suites.map(suite => {
@@ -337,7 +245,184 @@ class CustomHtmlReporter implements Reporter {
         </div>
         ${suiteSections}
       </div>`;
-    }).join('');
+    };
+
+    const buildSectionHtml = (sectionRecords: TestRecord[], sectionBrowsers: string[], sectionId: string, isActive: boolean): string => {
+      if (!sectionRecords.length) return '';
+
+      const sTotal      = sectionRecords.length;
+      const sPassed     = sectionRecords.filter(r => r.status === 'passed').length;
+      const sFailed     = sectionRecords.filter(r => r.status === 'failed' || r.status === 'timedOut').length;
+      const sSkipped    = sectionRecords.filter(r => r.status === 'skipped').length;
+      const sPassedPct  = sTotal ? Math.round((sPassed  / sTotal) * 100) : 0;
+      const sFailedPct  = sTotal ? Math.round((sFailed  / sTotal) * 100) : 0;
+      const sSkippedPct = sTotal ? 100 - sPassedPct - sFailedPct : 0;
+
+      const sSlowest = [...sectionRecords].filter(r => r.status !== 'skipped').sort((a, b) => b.duration - a.duration).slice(0, 5);
+      const sFlaky   = sectionRecords.filter(r => r.retry > 0 && r.status === 'passed');
+
+      const summaryCards = `
+      <div class="summary">
+        <div class="card total">
+          <div class="card-left"><div class="count">${sTotal}</div><div class="label">Total</div></div>
+          <div class="card-browser-breakdown">
+            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b).length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
+          </div>
+        </div>
+        <div class="card passed">
+          <div class="card-left"><div class="count">${sPassed}</div><div class="label">Passed</div></div>
+          <div class="card-browser-breakdown">
+            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b && r.status === 'passed').length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
+          </div>
+        </div>
+        <div class="card failed">
+          <div class="card-left"><div class="count">${sFailed}</div><div class="label">Failed</div></div>
+          <div class="card-browser-breakdown">
+            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b && (r.status === 'failed' || r.status === 'timedOut')).length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
+          </div>
+        </div>
+        <div class="card skipped">
+          <div class="card-left"><div class="count">${sSkipped}</div><div class="label">Skipped</div></div>
+          <div class="card-browser-breakdown">
+            ${sectionBrowsers.map(b => { const n = sectionRecords.filter(r => r.browser === b && r.status === 'skipped').length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
+          </div>
+        </div>
+      </div>`;
+
+      const progressBar = `
+      <div class="progress-wrap">
+        <div class="progress-bar">
+          <div style="height:100%;width:${sPassedPct}%;background:#22c55e;"></div>
+          <div style="height:100%;width:${sFailedPct}%;background:#ef4444;"></div>
+          <div style="height:100%;width:${sSkippedPct}%;background:#f59e0b;"></div>
+        </div>
+        <div class="progress-labels">
+          ${sPassedPct  ? `<span class="prog-label prog-label-passed"  style="left:${sPassedPct / 2}%">${sPassedPct}% passed</span>`   : ''}
+          ${sFailedPct  ? `<span class="prog-label prog-label-failed"  style="left:${sPassedPct + sFailedPct / 2}%">${sFailedPct}% failed</span>`   : ''}
+          ${sSkippedPct ? `<span class="prog-label prog-label-skipped" style="left:${sPassedPct + sFailedPct + sSkippedPct / 2}%">${sSkippedPct}% skipped</span>` : ''}
+        </div>
+      </div>`;
+
+      const slowestHtml = sSlowest.map(r =>
+        `<div class="slow-row">
+          <span class="slow-title">${escapeHtml(r.title)}</span>
+          <div class="slow-meta">
+            <span class="slow-browser">${browserIcons[r.browser] ?? '🌐'} ${escapeHtml(r.browser)}</span>
+            <span class="slow-dur">${(r.duration / 1000).toFixed(2)}s</span>
+            <div class="slow-bar-wrap"><div class="slow-bar" style="width:${Math.round((r.duration / sSlowest[0].duration) * 100)}%"></div></div>
+          </div>
+        </div>`
+      ).join('');
+
+      const flakyHtml = sFlaky.length
+        ? sFlaky.map(r =>
+            `<div class="flaky-row">
+              <span class="flaky-title">${escapeHtml(r.title)}</span>
+              <span class="slow-browser">${browserIcons[r.browser] ?? '🌐'} ${escapeHtml(r.browser)}</span>
+              <span class="retry-badge">↺ passed on retry ${r.retry}</span>
+            </div>`).join('')
+        : '<p class="no-data">No flaky tests detected.</p>';
+
+      const infoRow = `
+      <div class="info-row">
+        <div class="env-block">
+          <h3>Environment</h3>
+          <div class="env-item"><span class="env-key">Base URL</span><span class="env-val">${escapeHtml(this.baseURL || 'N/A')}</span></div>
+          <div class="env-item"><span class="env-key">Node.js</span><span class="env-val">${escapeHtml(this.nodeVersion)}</span></div>
+          <div class="env-item"><span class="env-key">Platform</span><span class="env-val">${escapeHtml(os.platform())} ${escapeHtml(os.arch())}</span></div>
+          <div class="env-item"><span class="env-key">Projects</span><span class="env-val">${sectionBrowsers.map(b => escapeHtml(b)).join(', ')}</span></div>
+        </div>
+        <div class="slowest-block">
+          <h3>Slowest Tests (Top ${sSlowest.length})</h3>
+          ${slowestHtml}
+        </div>
+        <div class="flaky-block">
+          <h3>Flaky Tests</h3>
+          ${flakyHtml}
+        </div>
+      </div>`;
+
+      const browserSummaryRows = sectionBrowsers.map(browser => {
+        const bRecords  = sectionRecords.filter(r => r.browser === browser);
+        const bPassed   = bRecords.filter(r => r.status === 'passed').length;
+        const bFailed   = bRecords.filter(r => r.status === 'failed' || r.status === 'timedOut').length;
+        const bSkipped  = bRecords.filter(r => r.status === 'skipped').length;
+        const bTotal    = bRecords.length;
+        const bDuration = bRecords.reduce((sum, r) => sum + r.duration, 0);
+        const bDurStr   = bDuration >= 60000
+          ? `${Math.floor(bDuration / 60000)}m ${((bDuration % 60000) / 1000).toFixed(1)}s`
+          : `${(bDuration / 1000).toFixed(2)}s`;
+        const icon        = browserIcons[browser] ?? '🌐';
+        const bPassedPct  = bTotal ? Math.round((bPassed  / bTotal) * 100) : 0;
+        const bFailedPct  = bTotal ? Math.round((bFailed  / bTotal) * 100) : 0;
+        const bSkippedPct = bTotal ? 100 - bPassedPct - bFailedPct : 0;
+        const bSummaryId  = `bsummary-${sectionId}-${browser}`;
+        const suites = [...new Set(bRecords.map(r => r.suite))].sort();
+        const suiteRows = suites.map(suite => {
+          const sRecs    = bRecords.filter(r => r.suite === suite);
+          const sp = sRecs.filter(r => r.status === 'passed').length;
+          const sf = sRecs.filter(r => r.status === 'failed' || r.status === 'timedOut').length;
+          const ss = sRecs.filter(r => r.status === 'skipped').length;
+          const sd = `${(sRecs.reduce((s, r) => s + r.duration, 0) / 1000).toFixed(2)}s`;
+          return `
+          <div class="bs-suite-row">
+            <span class="bs-suite-name">📄 ${escapeHtml(suite)}</span>
+            <span class="bs-stat bs-passed">✓ ${sp}</span>
+            <span class="bs-stat bs-failed">✗ ${sf}</span>
+            ${ss ? `<span class="bs-stat bs-skipped">— ${ss}</span>` : ''}
+            <span class="bs-stat bs-duration">⏱ ${sd}</span>
+          </div>`;
+        }).join('');
+        return `
+        <div class="browser-summary-row-wrap">
+          <button class="browser-summary-row" onclick="toggleBs('${bSummaryId}', this)">
+            <span class="bs-browser">${icon} ${escapeHtml(browser)}</span>
+            <span class="bs-stat bs-total">${bTotal} total</span>
+            <span class="bs-stat bs-passed">✓ ${bPassed} passed</span>
+            <span class="bs-stat bs-failed">✗ ${bFailed} failed</span>
+            ${bSkipped ? `<span class="bs-stat bs-skipped">— ${bSkipped} skipped</span>` : ''}
+            <span class="bs-stat bs-duration">⏱ ${bDurStr}</span>
+            <div class="bs-bar-wrap">
+              <div class="bs-bar-seg" style="width:${bPassedPct}%;background:#22c55e"></div>
+              <div class="bs-bar-seg" style="width:${bFailedPct}%;background:#ef4444"></div>
+              <div class="bs-bar-seg" style="width:${bSkippedPct}%;background:#f59e0b"></div>
+            </div>
+            <span class="bs-pct bs-pct-passed">${bPassedPct}% passed</span>
+            ${bFailedPct  ? `<span class="bs-pct bs-pct-failed">${bFailedPct}% failed</span>`    : ''}
+            ${bSkippedPct ? `<span class="bs-pct bs-pct-skipped">${bSkippedPct}% skipped</span>` : ''}
+            <span class="bs-chevron">▾</span>
+          </button>
+          <div class="bs-suite-list" id="${bSummaryId}" style="display:none">${suiteRows}</div>
+        </div>`;
+      }).join('');
+
+      const browserSummary = `
+      <div class="browser-summary">
+        <div class="browser-summary-title">Results by ${sectionId === 'ui' ? 'Browser' : 'Project'}</div>
+        ${browserSummaryRows}
+      </div>`;
+
+      const tabButtons = sectionBrowsers.map((b, i) =>
+        `<button class="tab ${i === 0 ? 'active' : ''}" onclick="switchTab('${b}', this)">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}</button>`
+      ).join('');
+
+      const panels = sectionBrowsers.map((b, i) => buildPanel(b, i, sectionRecords)).join('');
+      const testSection = sectionBrowsers.length > 1
+        ? `<div class="tabs">${tabButtons}</div>${panels}`
+        : panels;
+
+      return `
+<div class="type-panel ${isActive ? 'active' : ''}" id="type-panel-${sectionId}">
+  ${summaryCards}
+  ${progressBar}
+  ${infoRow}
+  ${browserSummary}
+  ${testSection}
+</div>`;
+    };
+
+    const uiSection  = buildSectionHtml(uiRecords,  uiBrowsers, 'ui',  true);
+    const apiSection = buildSectionHtml(apiRecords, ['api'],     'api', !uiRecords.length);
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -388,9 +473,9 @@ class CustomHtmlReporter implements Reporter {
     /* Progress bar */
     .progress-wrap { margin: 0 40px 28px; position: relative; }
     .progress-bar { height: 10px; border-radius: 99px; background: var(--border); overflow: hidden; display: flex; }
-    .seg-passed  { background: #22c55e; width: ${passedPct}%; }
-    .seg-failed  { background: #ef4444; width: ${failedPct}%; }
-    .seg-skipped { background: #f59e0b; width: ${skippedPct}%; }
+    .seg-passed  { background: #22c55e; }
+    .seg-failed  { background: #ef4444; }
+    .seg-skipped { background: #f59e0b; }
     .progress-labels { position: relative; height: 22px; margin-top: 4px; }
     .prog-label { position: absolute; transform: translateX(-50%); font-size: 11px; font-weight: 700; white-space: nowrap; }
     .prog-label-passed  { color: #15803d; }
@@ -454,8 +539,20 @@ class CustomHtmlReporter implements Reporter {
     .bs-pct-failed  { color: #b91c1c; }
     .bs-pct-skipped { color: #b45309; }
 
+    /* Type tabs (UI / API) */
+    .type-tabs { display: flex; gap: 12px; padding: 28px 40px 0; }
+    .type-tab { display: flex; align-items: center; gap: 8px; padding: 12px 24px; font-size: 15px; font-weight: 700;
+                border: 2px solid var(--border); border-radius: 10px 10px 0 0; background: var(--surface2);
+                cursor: pointer; color: var(--text2); border-bottom: none; transition: all .15s; }
+    .type-tab:hover { color: var(--text); background: var(--surface); }
+    .type-tab.active { background: var(--surface); color: #6366f1; border-color: #6366f1; border-bottom: 2px solid var(--surface); margin-bottom: -2px; }
+    .type-tab-count { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: #ede9fe; color: #6366f1; }
+    .type-tab.active .type-tab-count { background: #6366f1; color: white; }
+    .type-panel { display: none; border-top: 2px solid #6366f1; }
+    .type-panel.active { display: block; }
+
     /* Browser tabs */
-    .tabs { display: flex; gap: 8px; padding: 0 40px; border-bottom: 2px solid var(--border); }
+    .tabs { display: flex; gap: 8px; padding: 0 40px; border-bottom: 2px solid var(--border); margin-top: 16px; }
     .tab { padding: 10px 20px; font-size: 14px; font-weight: 600; border: none; background: none;
            cursor: pointer; color: var(--text2); border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all .15s; }
     .tab:hover  { color: var(--text); }
@@ -571,74 +668,13 @@ class CustomHtmlReporter implements Reporter {
   </div>
 </header>
 
-<div class="summary">
-  <div class="card total">
-    <div class="card-left"><div class="count">${total}</div><div class="label">Total</div></div>
-    <div class="card-browser-breakdown">
-      ${browsers.map(b => { const n = this.records.filter(r => r.browser === b).length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-    </div>
-  </div>
-  <div class="card passed">
-    <div class="card-left"><div class="count">${totalPassed}</div><div class="label">Passed</div></div>
-    <div class="card-browser-breakdown">
-      ${browsers.map(b => { const n = this.records.filter(r => r.browser === b && r.status === 'passed').length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-    </div>
-  </div>
-  <div class="card failed">
-    <div class="card-left"><div class="count">${totalFailed}</div><div class="label">Failed</div></div>
-    <div class="card-browser-breakdown">
-      ${browsers.map(b => { const n = this.records.filter(r => r.browser === b && (r.status === 'failed' || r.status === 'timedOut')).length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-    </div>
-  </div>
-  <div class="card skipped">
-    <div class="card-left"><div class="count">${totalSkipped}</div><div class="label">Skipped</div></div>
-    <div class="card-browser-breakdown">
-      ${browsers.map(b => { const n = this.records.filter(r => r.browser === b && r.status === 'skipped').length; return `<span class="card-b-item">${browserIcons[b] ?? '🌐'} ${escapeHtml(b)}: <strong>${n}</strong></span>`; }).join('')}
-    </div>
-  </div>
+<div class="type-tabs">
+  ${uiBrowsers.length ? `<button class="type-tab active" onclick="switchTypeTab('ui', this)">🖥 UI Tests <span class="type-tab-count">${uiRecords.length}</span></button>` : ''}
+  ${apiRecords.length ? `<button class="type-tab ${uiBrowsers.length ? '' : 'active'}" onclick="switchTypeTab('api', this)">🌐 API Tests <span class="type-tab-count">${apiRecords.length}</span></button>` : ''}
 </div>
 
-<div class="progress-wrap">
-  <div class="progress-bar">
-    <div class="seg-passed"></div>
-    <div class="seg-failed"></div>
-    <div class="seg-skipped"></div>
-  </div>
-  <div class="progress-labels">
-    ${passedPct  ? `<span class="prog-label prog-label-passed"  style="left:${passedPct / 2}%">${passedPct}% passed</span>`   : ''}
-    ${failedPct  ? `<span class="prog-label prog-label-failed"  style="left:${passedPct + failedPct / 2}%">${failedPct}% failed</span>`   : ''}
-    ${skippedPct ? `<span class="prog-label prog-label-skipped" style="left:${passedPct + failedPct + skippedPct / 2}%">${skippedPct}% skipped</span>` : ''}
-  </div>
-</div>
-
-<div class="info-row">
-  <div class="env-block">
-    <h3>Environment</h3>
-    <div class="env-item"><span class="env-key">Base URL</span><span class="env-val">${escapeHtml(this.baseURL || 'N/A')}</span></div>
-    <div class="env-item"><span class="env-key">Node.js</span><span class="env-val">${escapeHtml(this.nodeVersion)}</span></div>
-    <div class="env-item"><span class="env-key">Platform</span><span class="env-val">${escapeHtml(os.platform())} ${escapeHtml(os.arch())}</span></div>
-    <div class="env-item"><span class="env-key">Browsers</span><span class="env-val">${browsers.map(b => escapeHtml(b)).join(', ')}</span></div>
-  </div>
-  <div class="slowest-block">
-    <h3>Slowest Tests (Top ${slowest.length})</h3>
-    ${slowestHtml}
-  </div>
-  <div class="flaky-block">
-    <h3>Flaky Tests</h3>
-    ${flakyHtml}
-  </div>
-</div>
-
-<div class="browser-summary">
-  <div class="browser-summary-title">Results by Browser</div>
-  ${browserSummaryRows}
-</div>
-
-<div class="tabs">
-  ${tabButtons}
-</div>
-
-${browserPanels}
+${uiSection}
+${apiSection}
 
 <footer>Custom Playwright HTML Reporter</footer>
 
@@ -674,9 +710,16 @@ ${browserPanels}
     body.style.display = open ? 'block' : 'none';
     chevron.classList.toggle('open', open);
   }
+  function switchTypeTab(type, btn) {
+    document.querySelectorAll('.type-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.type-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('type-panel-' + type).classList.add('active');
+  }
   function switchTab(browser, btn) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.browser-panel').forEach(p => p.classList.remove('active'));
+    const typePanel = btn.closest('.type-panel');
+    typePanel.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    typePanel.querySelectorAll('.browser-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-' + browser).classList.add('active');
   }
