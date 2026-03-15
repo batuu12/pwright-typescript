@@ -34,7 +34,7 @@ pwright-typescript/
 │       ├── login.spec.ts        # Login tests
 │       └── homepage.spec.ts     # Homepage tests
 ├── custom-report/               # Generated HTML reports (gitignored)
-├── .env                         # Environment variables
+├── .env                         # Environment variables (gitignored)
 ├── playwright.config.ts         # Playwright configuration
 └── tsconfig.json                # TypeScript configuration
 ```
@@ -52,6 +52,8 @@ Create a `.env` file in the project root:
 
 ```env
 BASE_URL=https://practicetestautomation.com
+USERNAME=your_username
+PASSWORD=your_password
 ```
 
 ---
