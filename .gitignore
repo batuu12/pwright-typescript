@@ -1,0 +1,17 @@
+
+# Environment
+.env
+
+# Editor
+.vscode/
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+/custom-report/
+/allure-results/
+/allure-report/
